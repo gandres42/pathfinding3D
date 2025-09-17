@@ -2,7 +2,7 @@ import math
 import warnings
 from functools import lru_cache
 from typing import List, Optional, Tuple, Union
-
+from collections import namedtuple
 import numpy as np
 
 from .diagonal_movement import DiagonalMovement
@@ -109,11 +109,17 @@ class Grid:
             walkable. Otherwise all values that are 0 will be considered walkable.
         """
         self.width, self.height, self.depth = self._validate_dimensions(width, height, depth, matrix)
-        self.nodes = (
-            build_nodes(self.width, self.height, self.depth, matrix, inverse, grid_id)
-            if self.is_valid_grid()
-            else [[[]]]
-        )
+        # self.nodes = (
+        #     build_nodes(self.width, self.height, self.depth, matrix, inverse, grid_id)
+        #     if self.is_valid_grid()
+        #     else [[[]]]
+        # )
+        self.nodes = np.empty((self.width, self.height, self.depth), dtype=object)
+        if matrix is not None:
+            self.matrix = matrix
+        else:
+            self.matrix = np.ones((self.width, self.height, self.depth))
+        self.inverse = inverse
 
     def _validate_dimensions(self, width: int, height: int, depth: int, matrix: MatrixType) -> tuple:
         if matrix is not None:
@@ -156,7 +162,11 @@ class Grid:
         GridNode
             node at position
         """
-        return self.nodes[x][y][z] if self.inside(x, y, z) else None
+        if self.inside(x, y, z) and self.nodes[x][y][z] is None:
+                weight = int(self.matrix[x][y][z])
+                walkable = weight <= 0 if self.inverse else weight >= 1
+                self.nodes[x][y][z] = GridNode(x=x, y=y, z=z, walkable=walkable, weight=1)
+        return self.nodes[x][y][z]
 
     def inside(self, x: int, y: int, z: int) -> bool:
         """
@@ -196,7 +206,13 @@ class Grid:
         bool
             True, if position is inside map and walkable
         """
-        return self.inside(x, y, z) and self.nodes[x][y][z].walkable
+        if self.inside(x, y, z):
+                # weight = int(self.matrix[x][y][z]) if self.matrix is not None else 1
+                # walkable = weight <= 0 if self.inverse else weight >= 1
+                # return walkable
+            return self.matrix[x][y][z]
+        else:
+            return False
 
     @lru_cache(maxsize=128)
     def _calc_cost(self, dx: int, dy: int, dz: int) -> float:
@@ -283,32 +299,38 @@ class Grid:
 
         # -y
         if self.walkable(x, y - 1, z):
-            neighbors.append(self.nodes[x][y - 1][z])
+            # neighbors.append(self.nodes[x][y - 1][z])
+            neighbors.append(self.node(x, y - 1, z))
             cs0 = True
 
         # +x
         if self.walkable(x + 1, y, z):
-            neighbors.append(self.nodes[x + 1][y][z])
+            # neighbors.append(self.nodes[x + 1][y][z])
+            neighbors.append(self.node(x + 1, y, z))
             cs1 = True
 
         # +y
         if self.walkable(x, y + 1, z):
-            neighbors.append(self.nodes[x][y + 1][z])
+            # neighbors.append(self.nodes[x][y + 1][z])
+            neighbors.append(self.node(x, y + 2, z))
             cs2 = True
 
         # -x
         if self.walkable(x - 1, y, z):
-            neighbors.append(self.nodes[x - 1][y][z])
+            # neighbors.append(self.nodes[x - 1][y][z])
+            neighbors.append(self.node(x - 1, y, z))
             cs3 = True
 
         # +z
         if self.walkable(x, y, z + 1):
-            neighbors.append(self.nodes[x][y][z + 1])
+            # neighbors.append(self.nodes[x][y][z + 1])
+            neighbors.append(self.node(x, y, z + 1))
             ut = True
 
         # -z
         if self.walkable(x, y, z - 1):
-            neighbors.append(self.nodes[x][y][z - 1])
+            # neighbors.append(self.nodes[x][y][z - 1])
+            neighbors.append(self.node(x, y, z - 1))
             lb = True
 
         # check for connections to other grids
@@ -357,73 +379,73 @@ class Grid:
 
         # +x -y
         if cd0 and self.walkable(x + 1, y - 1, z):
-            neighbors.append(self.nodes[x + 1][y - 1][z])
+            neighbors.append(self.node(x + 1, y - 1, z))
         else:
             cd0 = False
 
         # +x +y
         if cd1 and self.walkable(x + 1, y + 1, z):
-            neighbors.append(self.nodes[x + 1][y + 1][z])
+            neighbors.append(self.node(x + 1, y + 1, z))
         else:
             cd1 = False
 
         # -x +y
         if cd2 and self.walkable(x - 1, y + 1, z):
-            neighbors.append(self.nodes[x - 1][y + 1][z])
+            neighbors.append(self.node(x - 1, y + 1, z))
         else:
             cd2 = False
 
         # -x -y
         if cd3 and self.walkable(x - 1, y - 1, z):
-            neighbors.append(self.nodes[x - 1][y - 1][z])
+            neighbors.append(self.node(x - 1, y - 1, z))
         else:
             cd3 = False
 
         # -y +z
         if us0 and self.walkable(x, y - 1, z + 1):
-            neighbors.append(self.nodes[x][y - 1][z + 1])
+            neighbors.append(self.node(x, y - 1, z + 1))
         else:
             us0 = False
 
         # +x +z
         if us1 and self.walkable(x + 1, y, z + 1):
-            neighbors.append(self.nodes[x + 1][y][z + 1])
+            neighbors.append(self.node(x + 1, y, z + 1))
         else:
             us1 = False
 
         # +y +z
         if us2 and self.walkable(x, y + 1, z + 1):
-            neighbors.append(self.nodes[x][y + 1][z + 1])
+            neighbors.append(self.node(x, y + 1, z + 1))
         else:
             us2 = False
 
         # -x +z
         if us3 and self.walkable(x - 1, y, z + 1):
-            neighbors.append(self.nodes[x - 1][y][z + 1])
+            neighbors.append(self.node(x - 1, y, z + 1))
         else:
             us3 = False
 
         # -y -z
         if ls0 and self.walkable(x, y - 1, z - 1):
-            neighbors.append(self.nodes[x][y - 1][z - 1])
+            neighbors.append(self.node(x, y - 1, z - 1))
         else:
             ls0 = False
 
         # +x -z
         if ls1 and self.walkable(x + 1, y, z - 1):
-            neighbors.append(self.nodes[x + 1][y][z - 1])
+            neighbors.append(self.node(x + 1, y, z - 1))
         else:
             ls1 = False
 
         # +y -z
         if ls2 and self.walkable(x, y + 1, z - 1):
-            neighbors.append(self.nodes[x][y + 1][z - 1])
+            neighbors.append(self.node(x, y + 1, z - 1))
         else:
             ls2 = False
 
         # -x -z
         if ls3 and self.walkable(x - 1, y, z - 1):
-            neighbors.append(self.nodes[x - 1][y][z - 1])
+            neighbors.append(self.node(x - 1, y, z - 1))
         else:
             ls3 = False
 
@@ -456,35 +478,41 @@ class Grid:
 
         # +x -y +z
         if ud0 and self.walkable(x + 1, y - 1, z + 1):
-            neighbors.append(self.nodes[x + 1][y - 1][z + 1])
+            neighbors.append(self.node(x + 1, y - 1, z + 1))
 
         # +x +y +z
         if ud1 and self.walkable(x + 1, y + 1, z + 1):
-            neighbors.append(self.nodes[x + 1][y + 1][z + 1])
+            neighbors.append(self.node(x + 1, y + 1, z + 1))
 
         # -x +y +z
         if ud2 and self.walkable(x - 1, y + 1, z + 1):
-            neighbors.append(self.nodes[x - 1][y + 1][z + 1])
+            neighbors.append(self.node(x - 1, y + 1, z + 1))
 
         # -x -y +z
         if ud3 and self.walkable(x - 1, y - 1, z + 1):
-            neighbors.append(self.nodes[x - 1][y - 1][z + 1])
+            neighbors.append(self.node(x - 1, y - 1, z + 1))
 
         # +x -y -z
         if ld0 and self.walkable(x + 1, y - 1, z - 1):
-            neighbors.append(self.nodes[x + 1][y - 1][z - 1])
+            neighbors.append(self.node(x + 1, y - 1, z - 1))
 
         # +x +y -z
         if ld1 and self.walkable(x + 1, y + 1, z - 1):
-            neighbors.append(self.nodes[x + 1][y + 1][z - 1])
+            neighbors.append(self.node(x + 1, y + 1, z - 1))
 
         # -x +y -z
         if ld2 and self.walkable(x - 1, y + 1, z - 1):
-            neighbors.append(self.nodes[x - 1][y + 1][z - 1])
+            neighbors.append(self.node(x - 1, y + 1, z - 1))
 
         # -x -y -z
         if ld3 and self.walkable(x - 1, y - 1, z - 1):
-            neighbors.append(self.nodes[x - 1][y - 1][z - 1])
+            neighbors.append(self.node(x - 1, y - 1, z - 1))
+
+        tmp_neighbors = []
+        for neighbor in neighbors:
+            if neighbor is not None:
+                tmp_neighbors.append(neighbor)
+        neighbors = tmp_neighbors
 
         return neighbors
 
